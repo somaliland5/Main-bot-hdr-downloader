@@ -4,10 +4,16 @@ import os
 import json
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# ===== USER STATE =====
 user_state = {}
 
-# ===== USERS FILE =====
+# ===== LOAD DB =====
+def load_db():
+    if not os.path.exists("database.json"):
+        return {"channels": []}
+    with open("database.json", "r") as f:
+        return json.load(f)
+
+# ===== USERS =====
 def load_users(file):
     if not os.path.exists(file):
         return []
@@ -18,12 +24,12 @@ def save_users(file, data):
     with open(file, "w") as f:
         json.dump(data, f)
 
-# ===== DOWNLOAD FUNCTION =====
+# ===== DOWNLOAD =====
 def download_media(url):
     ydl_opts = {
-        'outtmpl': 'media.%(ext)s',
-        'quiet': True,
-        'noplaylist': True
+        "outtmpl": "media.%(ext)s",
+        "quiet": True,
+        "noplaylist": True
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -31,109 +37,106 @@ def download_media(url):
         filename = ydl.prepare_filename(info)
         return filename
 
-# ===== START BOT =====
+# ===== FORCE JOIN CHECK =====
+def not_joined(bot, user_id):
+    db = load_db()
+    channels = db.get("channels", [])
+    missing = []
+
+    for ch in channels:
+        try:
+            member = bot.get_chat_member(ch, user_id)
+            if member.status in ["left", "kicked"]:
+                missing.append(ch)
+        except:
+            missing.append(ch)
+
+    return missing
+
+# ===== MAIN BOT =====
 def start_sub_bot(TOKEN, OWNER_ID):
+
     bot = telebot.TeleBot(TOKEN)
     users_file = f"users_{TOKEN[:8]}.json"
+
+    bot_username = bot.get_me().username
 
     # ===== START =====
     @bot.message_handler(commands=['start'])
     def start(msg):
-        users = load_users(users_file)
 
+        missing = not_joined(bot, msg.from_user.id)
+
+        if missing:
+            markup = InlineKeyboardMarkup()
+            for ch in missing:
+                markup.add(
+                    InlineKeyboardButton(
+                        f"Join {ch}",
+                        url=f"https://t.me/{ch.replace('@','')}"
+                    )
+                )
+            markup.add(
+                InlineKeyboardButton("Check Again", callback_data="check")
+            )
+
+            bot.send_message(msg.chat.id, "You must join channels first", reply_markup=markup)
+            return
+
+        users = load_users(users_file)
         if msg.chat.id not in users:
             users.append(msg.chat.id)
             save_users(users_file, users)
 
-        bot.send_message(
-            msg.chat.id,
-            "Send a TikTok or Instagram link to download media."
-        )
+        bot.send_message(msg.chat.id, "Send TikTok or Instagram link")
 
-    # ===== BROADCAST =====
-    @bot.message_handler(commands=['broadcast'])
-    def broadcast(msg):
-        if msg.from_user.id != OWNER_ID:
-            return
+    # ===== CHECK JOIN =====
+    @bot.callback_query_handler(func=lambda call: call.data == "check")
+    def check(call):
+        missing = not_joined(bot, call.from_user.id)
+        if not missing:
+            bot.send_message(call.message.chat.id, "Access granted ✅")
+        else:
+            bot.answer_callback_query(call.id, "Join required ❌")
 
-        bot.send_message(msg.chat.id, "Send message / photo / video to broadcast")
-        user_state[msg.chat.id] = "broadcast"
-
-    # ===== HANDLE ALL =====
-    @bot.message_handler(func=lambda m: True, content_types=['text','photo','video'])
+    # ===== HANDLE =====
+    @bot.message_handler(func=lambda m: True)
     def handle(msg):
+
         users = load_users(users_file)
-
-        # ===== BROADCAST MODE =====
-        if user_state.get(msg.chat.id) == "broadcast":
-
-            markup = InlineKeyboardMarkup()
-            markup.add(
-                InlineKeyboardButton(
-                    "Join Channel",
-                    url="https://t.me/Create_Our_own_bot"
-                )
-            )
-
-            for u in users:
-                try:
-                    if msg.content_type == "text":
-                        bot.send_message(u, msg.text, reply_markup=markup)
-
-                    elif msg.content_type == "photo":
-                        bot.send_photo(
-                            u,
-                            msg.photo[-1].file_id,
-                            caption=msg.caption or "",
-                            reply_markup=markup
-                        )
-
-                    elif msg.content_type == "video":
-                        bot.send_video(
-                            u,
-                            msg.video.file_id,
-                            caption=msg.caption or "",
-                            reply_markup=markup
-                        )
-
-                except:
-                    pass
-
-            bot.send_message(msg.chat.id, "Broadcast sent ✅")
-            user_state[msg.chat.id] = None
-            return
-
-        # ===== DOWNLOAD MODE =====
-        if msg.content_type != "text":
-            bot.send_message(msg.chat.id, "Please send a valid link.")
-            return
 
         url = msg.text.strip()
 
-        bot.send_message(msg.chat.id, "Downloading...")
+        # ===== MESSAGE 1 =====
+        loading_msg = bot.send_message(msg.chat.id, "Downloading... ⏳")
 
         try:
             file_path = download_media(url)
 
-            caption = f"Via: @{bot.get_me().username}\nCreated: @Create_Our_own_bot"
+            # DELETE DOWNLOADING MESSAGE
+            bot.delete_message(msg.chat.id, loading_msg.message_id)
 
-            # send based on type
-            if file_path.endswith((".mp4", ".mkv", ".mov")):
-                with open(file_path, "rb") as f:
+            # ===== MESSAGE 2 (VIDEO + CAPTION) =====
+            caption = f"Via: @{bot_username}"
+
+            with open(file_path, "rb") as f:
+                if file_path.endswith((".mp4", ".mov", ".mkv")):
                     bot.send_video(msg.chat.id, f, caption=caption)
 
-            elif file_path.endswith((".jpg", ".png", ".jpeg")):
-                with open(file_path, "rb") as f:
+                elif file_path.endswith((".jpg", ".png", ".jpeg")):
                     bot.send_photo(msg.chat.id, f, caption=caption)
 
-            else:
-                with open(file_path, "rb") as f:
+                else:
                     bot.send_document(msg.chat.id, f, caption=caption)
+
+            # ===== MESSAGE 3 (CREATED SEPARATE) =====
+            bot.send_message(msg.chat.id, "Created: @Create_Our_own_bot")
 
             os.remove(file_path)
 
-        except Exception as e:
-            bot.send_message(msg.chat.id, "Failed to download ❌")
+        except:
+            bot.delete_message(msg.chat.id, loading_msg.message_id)
+            bot.send_message(msg.chat.id, "Download failed ❌")
 
-    print(f"Sub bot running: {TOKEN[:8]}...")
+    print(f"Sub bot running: {TOKEN[:8]}")
     bot.infinity_polling()
