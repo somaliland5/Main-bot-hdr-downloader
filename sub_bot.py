@@ -1,19 +1,22 @@
 import telebot
-import yt_dlp
 import os
 import json
+import requests
+import yt_dlp
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+# ================= USER STATE =================
 user_state = {}
 
-# ===== LOAD DB =====
+# ================= LOAD DB =================
 def load_db():
     if not os.path.exists("database.json"):
         return {"channels": []}
+
     with open("database.json", "r") as f:
         return json.load(f)
 
-# ===== USERS =====
+# ================= USERS FILE =================
 def load_users(file):
     if not os.path.exists(file):
         return []
@@ -24,7 +27,7 @@ def save_users(file, data):
     with open(file, "w") as f:
         json.dump(data, f)
 
-# ===== DOWNLOAD =====
+# ================= DOWNLOAD =================
 def download_media(url):
     ydl_opts = {
         "outtmpl": "media.%(ext)s",
@@ -37,23 +40,22 @@ def download_media(url):
         filename = ydl.prepare_filename(info)
         return filename
 
-# ===== FORCE JOIN CHECK =====
-def not_joined(bot, user_id):
-    db = load_db()
-    channels = db.get("channels", [])
-    missing = []
+# ================= FORCE JOIN CHECK (MAIN BOT API) =================
+def check_user_access(user_id):
+    try:
+        r = requests.post(
+            "http://localhost:8080/check_user",  # replace with Railway URL
+            json={"user_id": user_id},
+            timeout=10
+        ).json()
 
-    for ch in channels:
-        try:
-            member = bot.get_chat_member(ch, user_id)
-            if member.status in ["left", "kicked"]:
-                missing.append(ch)
-        except:
-            missing.append(ch)
+        return r.get("ok", False), r.get("channels", [])
 
-    return missing
+    except:
+        # if API fails, allow temporarily (fallback)
+        return True, []
 
-# ===== MAIN BOT =====
+# ================= START BOT =================
 def start_sub_bot(TOKEN, OWNER_ID):
 
     bot = telebot.TeleBot(TOKEN)
@@ -61,14 +63,15 @@ def start_sub_bot(TOKEN, OWNER_ID):
 
     bot_username = bot.get_me().username
 
-    # ===== START =====
+    # ================= START =================
     @bot.message_handler(commands=['start'])
     def start(msg):
 
-        missing = not_joined(bot, msg.from_user.id)
+        ok, missing = check_user_access(msg.from_user.id)
 
-        if missing:
+        if not ok:
             markup = InlineKeyboardMarkup()
+
             for ch in missing:
                 markup.add(
                     InlineKeyboardButton(
@@ -76,11 +79,16 @@ def start_sub_bot(TOKEN, OWNER_ID):
                         url=f"https://t.me/{ch.replace('@','')}"
                     )
                 )
+
             markup.add(
-                InlineKeyboardButton("Check Again", callback_data="check")
+                InlineKeyboardButton("✅ Check Again", callback_data="check")
             )
 
-            bot.send_message(msg.chat.id, "You must join channels first", reply_markup=markup)
+            bot.send_message(
+                msg.chat.id,
+                "⚠️ You must join required channels first",
+                reply_markup=markup
+            )
             return
 
         users = load_users(users_file)
@@ -88,38 +96,41 @@ def start_sub_bot(TOKEN, OWNER_ID):
             users.append(msg.chat.id)
             save_users(users_file, users)
 
-        bot.send_message(msg.chat.id, "Send TikTok or Instagram link")
+        bot.send_message(
+            msg.chat.id,
+            "📥 Send TikTok or Instagram link to download"
+        )
 
-    # ===== CHECK JOIN =====
+    # ================= CHECK JOIN =================
     @bot.callback_query_handler(func=lambda call: call.data == "check")
     def check(call):
-        missing = not_joined(bot, call.from_user.id)
-        if not missing:
+        ok, missing = check_user_access(call.from_user.id)
+
+        if ok:
             bot.send_message(call.message.chat.id, "Access granted ✅")
         else:
             bot.answer_callback_query(call.id, "Join required ❌")
 
-    # ===== HANDLE =====
-    @bot.message_handler(func=lambda m: True)
+    # ================= HANDLE DOWNLOAD =================
+    @bot.message_handler(func=lambda m: True, content_types=['text'])
     def handle(msg):
-
-        users = load_users(users_file)
 
         url = msg.text.strip()
 
         # ===== MESSAGE 1 =====
-        loading_msg = bot.send_message(msg.chat.id, "Downloading... ⏳")
+        loading = bot.send_message(msg.chat.id, "Downloading... ⏳")
 
         try:
             file_path = download_media(url)
 
-            # DELETE DOWNLOADING MESSAGE
-            bot.delete_message(msg.chat.id, loading_msg.message_id)
+            # delete loading message
+            bot.delete_message(msg.chat.id, loading.message_id)
 
-            # ===== MESSAGE 2 (VIDEO + CAPTION) =====
+            # ===== MESSAGE 2 (MEDIA + CAPTION) =====
             caption = f"Via: @{bot_username}"
 
             with open(file_path, "rb") as f:
+
                 if file_path.endswith((".mp4", ".mov", ".mkv")):
                     bot.send_video(msg.chat.id, f, caption=caption)
 
@@ -129,14 +140,14 @@ def start_sub_bot(TOKEN, OWNER_ID):
                 else:
                     bot.send_document(msg.chat.id, f, caption=caption)
 
-            # ===== MESSAGE 3 (CREATED SEPARATE) =====
+            # ===== MESSAGE 3 (CREATED) =====
             bot.send_message(msg.chat.id, "Created: @Create_Our_own_bot")
 
             os.remove(file_path)
 
         except:
-            bot.delete_message(msg.chat.id, loading_msg.message_id)
+            bot.delete_message(msg.chat.id, loading.message_id)
             bot.send_message(msg.chat.id, "Download failed ❌")
 
-    print(f"Sub bot running: {TOKEN[:8]}")
+    print(f"[SUB BOT RUNNING] {TOKEN[:8]}")
     bot.infinity_polling()
