@@ -1,57 +1,57 @@
 import random
 import time
-import smtplib
-from email.mime.text import MIMEText
 
+# ================= OTP STORE =================
 OTP_STORE = {}
 
-EMAIL = "yous01888@gmail.com"
-APP_PASSWORD = "mdqdzgwjvsknblii"
+OTP_EXPIRE = 300  # 5 minutes
 
-# ================= SEND OTP =================
-def send_otp(to_email):
+# ================= GENERATE OTP =================
+def generate_otp(user_id):
     code = str(random.randint(1000, 9999))
 
-    OTP_STORE[to_email] = {
+    OTP_STORE[user_id] = {
         "code": code,
         "time": time.time()
     }
 
-    try:
-        msg = MIMEText(f"Your verification code is: {code}")
-        msg["Subject"] = "Your Login OTP Code"
-        msg["From"] = EMAIL
-        msg["To"] = to_email
+    return code
 
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
+# ================= SEND OTP =================
+def send_otp(bot, chat_id, user_id):
+    code = generate_otp(user_id)
 
-        server.login(EMAIL, APP_PASSWORD)
-        server.sendmail(EMAIL, to_email, msg.as_string())
-        server.quit()
+    bot.send_message(
+        chat_id,
+        f"🔐 Your login code is:\n\n<b>{code}</b>\n\n⏳ Expires in 5 minutes",
+        parse_mode="HTML"
+    )
 
-        print(f"[OTP SENT] {to_email} -> {code}")
-
-        return True
-
-    except Exception as e:
-        print("[EMAIL ERROR]", e)
-        return False
+    print(f"[OTP] sent to {user_id}: {code}")
 
 # ================= VERIFY OTP =================
-def verify_otp(email, code):
-    data = OTP_STORE.get(email)
+def verify_otp(user_id, code):
+    data = OTP_STORE.get(user_id)
 
     if not data:
         return False
 
-    # expire after 5 minutes
-    if time.time() - data["time"] > 300:
-        del OTP_STORE[email]
+    # expired
+    if time.time() - data["time"] > OTP_EXPIRE:
+        del OTP_STORE[user_id]
         return False
 
+    # match
     if data["code"] == code:
-        del OTP_STORE[email]
+        del OTP_STORE[user_id]
         return True
 
     return False
+
+# ================= CLEANUP =================
+def cleanup():
+    now = time.time()
+
+    for uid in list(OTP_STORE.keys()):
+        if now - OTP_STORE[uid]["time"] > OTP_EXPIRE:
+            del OTP_STORE[uid]
