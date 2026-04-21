@@ -4,7 +4,7 @@ import time
 # ================= OTP STORE =================
 OTP_STORE = {}
 
-OTP_EXPIRE = 300  # 5 minutes
+OTP_EXPIRE_SECONDS = 300  # 5 minutes
 
 # ================= GENERATE OTP =================
 def generate_otp(user_id):
@@ -17,17 +17,28 @@ def generate_otp(user_id):
 
     return code
 
-# ================= SEND OTP =================
+# ================= SEND OTP VIA BOT =================
 def send_otp(bot, chat_id, user_id):
+    """
+    Sends OTP directly to Telegram chat
+    """
+
     code = generate_otp(user_id)
 
-    bot.send_message(
-        chat_id,
-        f"🔐 Your login code is:\n\n<b>{code}</b>\n\n⏳ Expires in 5 minutes",
-        parse_mode="HTML"
-    )
+    try:
+        bot.send_message(
+            chat_id,
+            f"🔐 Your verification code is:\n\n<b>{code}</b>\n\n⏳ Valid for 5 minutes",
+            parse_mode="HTML"
+        )
 
-    print(f"[OTP] sent to {user_id}: {code}")
+        print(f"[OTP SENT] user:{user_id} code:{code}")
+
+        return True
+
+    except Exception as e:
+        print("[OTP SEND ERROR]", e)
+        return False
 
 # ================= VERIFY OTP =================
 def verify_otp(user_id, code):
@@ -36,12 +47,12 @@ def verify_otp(user_id, code):
     if not data:
         return False
 
-    # expired
-    if time.time() - data["time"] > OTP_EXPIRE:
+    # expiry check
+    if time.time() - data["time"] > OTP_EXPIRE_SECONDS:
         del OTP_STORE[user_id]
         return False
 
-    # match
+    # match check
     if data["code"] == code:
         del OTP_STORE[user_id]
         return True
@@ -53,5 +64,5 @@ def cleanup():
     now = time.time()
 
     for uid in list(OTP_STORE.keys()):
-        if now - OTP_STORE[uid]["time"] > OTP_EXPIRE:
+        if now - OTP_STORE[uid]["time"] > OTP_EXPIRE_SECONDS:
             del OTP_STORE[uid]
