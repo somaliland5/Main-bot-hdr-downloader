@@ -5,9 +5,6 @@ import requests
 import yt_dlp
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# ================= USER STATE =================
-user_state = {}
-
 # ================= LOAD DB =================
 def load_db():
     default = {"channels": []}
@@ -26,6 +23,7 @@ def load_db():
 def load_users(file):
     if not os.path.exists(file):
         return []
+
     with open(file, "r") as f:
         return json.load(f)
 
@@ -47,18 +45,22 @@ def download_media(url, quality="best"):
         filename = ydl.prepare_filename(info)
         return filename
 
-# ================= FORCE JOIN API =================
+# ================= FORCE JOIN CHECK =================
 def check_access(user_id):
     try:
+        # ⚠️ IMPORTANT: BADAL LINKGA HOOS KU QORAN
+        url = "https://YOUR-APP.up.railway.app/check_user"
+
         r = requests.post(
-            "http://localhost:8080/check_user",  # Railway URL replace here
+            url,
             json={"user_id": user_id},
             timeout=10
         ).json()
 
-        return r.get("ok", False), r.get("channels", [])
+        return r.get("ok", True), r.get("channels", [])
 
-    except:
+    except Exception as e:
+        print("CHECK ACCESS ERROR:", e)
         return True, []
 
 # ================= START BOT =================
@@ -67,7 +69,11 @@ def start_sub_bot(TOKEN, OWNER_ID):
     bot = telebot.TeleBot(TOKEN)
     users_file = f"users_{TOKEN[:8]}.json"
 
-    bot_username = bot.get_me().username
+    try:
+        bot_username = bot.get_me().username
+    except:
+        print("INVALID TOKEN:", TOKEN)
+        return
 
     # ================= START =================
     @bot.message_handler(commands=['start'])
@@ -92,11 +98,12 @@ def start_sub_bot(TOKEN, OWNER_ID):
 
             bot.send_message(
                 msg.chat.id,
-                "⚠️ Join required channels first",
+                "⚠️ Please join required channels first",
                 reply_markup=markup
             )
             return
 
+        # save user
         users = load_users(users_file)
         if msg.chat.id not in users:
             users.append(msg.chat.id)
@@ -104,36 +111,39 @@ def start_sub_bot(TOKEN, OWNER_ID):
 
         kb = InlineKeyboardMarkup()
         kb.add(
-            InlineKeyboardButton("⚡ 1080P DOWNLOAD", callback_data="1080"),
-            InlineKeyboardButton("🔥 4K DOWNLOAD", callback_data="4k")
+            InlineKeyboardButton("⚡ 1080P", callback_data="1080"),
+            InlineKeyboardButton("🔥 4K", callback_data="4k")
         )
 
         bot.send_message(
             msg.chat.id,
-            "📥 Send TikTok / Instagram link",
+            "📥 Send TikTok or Instagram link",
             reply_markup=kb
         )
 
-    # ================= CHECK JOIN =================
+    # ================= CHECK BUTTON =================
     @bot.callback_query_handler(func=lambda call: call.data == "check")
     def check(call):
-        ok, missing = check_access(call.from_user.id)
+        ok, _ = check_access(call.from_user.id)
 
         if ok:
             bot.send_message(call.message.chat.id, "Access granted ✅")
         else:
-            bot.answer_callback_query(call.id, "Join required ❌")
+            bot.answer_callback_query(call.id, "Still not joined ❌")
 
-    # ================= QUALITY SELECT =================
+    # ================= QUALITY =================
     quality_map = {}
 
     @bot.callback_query_handler(func=lambda call: call.data in ["1080", "4k"])
     def quality(call):
-        quality_map[call.from_user.id] = "best" if call.data == "1080" else "bestvideo+bestaudio"
+        if call.data == "1080":
+            quality_map[call.from_user.id] = "best"
+        else:
+            quality_map[call.from_user.id] = "bestvideo+bestaudio"
 
         bot.answer_callback_query(call.id, f"{call.data.upper()} selected")
 
-    # ================= HANDLE DOWNLOAD =================
+    # ================= DOWNLOAD HANDLER =================
     @bot.message_handler(func=lambda m: True, content_types=['text'])
     def handle(msg):
 
@@ -148,7 +158,6 @@ def start_sub_bot(TOKEN, OWNER_ID):
 
             bot.delete_message(msg.chat.id, loading.message_id)
 
-            # MESSAGE 2 (MEDIA)
             caption = f"Via: @{bot_username}"
 
             with open(file_path, "rb") as f:
@@ -162,14 +171,16 @@ def start_sub_bot(TOKEN, OWNER_ID):
                 else:
                     bot.send_document(msg.chat.id, f, caption=caption)
 
-            # MESSAGE 3 (CREATED)
+            # MESSAGE 3
             bot.send_message(msg.chat.id, "Created: @Create_Our_own_bot")
 
             os.remove(file_path)
 
-        except:
+        except Exception as e:
+            print("DOWNLOAD ERROR:", e)
             bot.delete_message(msg.chat.id, loading.message_id)
             bot.send_message(msg.chat.id, "Download failed ❌")
 
     print(f"[SUB BOT RUNNING] {TOKEN[:8]}")
-    bot.infinity_polling()
+
+    bot.infinity_polling(skip_pending=True)
