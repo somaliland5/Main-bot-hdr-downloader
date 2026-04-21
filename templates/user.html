@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>User Chat</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<h2>👤 Welcome {{name}}</h2>
+
+<div class="card">
+
+<h3>💬 Chat</h3>
+
+{% for m in messages %}
+<p><b>{{m.name}}:</b> {{m.msg}}</p>
+{% endfor %}
+
+</div>
+
+<form method="POST" action="/send">
+<input name="message" placeholder="Write message">
+<button>Send</button>
+</form>
+
+</body>
+</html>
