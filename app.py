@@ -1,92 +1,79 @@
-from flask import Flask, render_template, request, redirect, session, jsonify
-import json
-import os
+from flask import Flask, render_template, request, redirect, session
+import json, os
 
 app = Flask(__name__)
-app.secret_key = "change_this_secret"
+app.secret_key = "change_this_key"
 
-ADMIN_PASSWORD = "666661"
+ADMIN_PASSWORD = "admin7983"
+USER_PASSWORD = "user123"
 
-# ================= LOAD DB =================
+# ================= DB =================
 def load_db():
-    default = {
-        "bots": [],
-        "users": [],
-        "downloads": {},
-        "channels": [],
-        "ads": "Your Ad Here"
-    }
-
     if not os.path.exists("database.json"):
-        return default
+        return {"messages": []}
 
-    try:
-        with open("database.json", "r") as f:
-            data = json.load(f)
-            return {**default, **data}
-    except:
-        return default
+    with open("database.json", "r") as f:
+        return json.load(f)
 
-def save_db(data):
+def save_db(db):
     with open("database.json", "w") as f:
-        json.dump(data, f, indent=4)
+        json.dump(db, f, indent=4)
 
 # ================= LOGIN =================
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login", methods=["GET","POST"])
 def login():
     if request.method == "POST":
-        if request.form["password"] == ADMIN_PASSWORD:
-            session["admin"] = True
-            return redirect("/")
+        password = request.form["password"]
+        name = request.form.get("name","User")
+
+        # ADMIN LOGIN
+        if password == ADMIN_PASSWORD:
+            session["role"] = "admin"
+            return redirect("/admin")
+
+        # USER LOGIN
+        if password == USER_PASSWORD:
+            session["role"] = "user"
+            session["name"] = name
+            return redirect("/user")
+
         return "Wrong password ❌"
 
     return render_template("login.html")
 
-# ================= LOGOUT =================
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/login")
-
-# ================= DASHBOARD =================
-@app.route("/")
-def dashboard():
-    if not session.get("admin"):
+# ================= USER PAGE =================
+@app.route("/user")
+def user():
+    if session.get("role") != "user":
         return redirect("/login")
 
     db = load_db()
+    return render_template("user.html", name=session.get("name"), messages=db["messages"])
 
-    stats = {
-        "bots": len(db["bots"]),
-        "users": len(db["users"]),
-        "downloads": sum(db["downloads"].values()) if db["downloads"] else 0,
-        "channels": len(db["channels"])
-    }
+# ================= ADMIN PAGE =================
+@app.route("/admin")
+def admin():
+    if session.get("role") != "admin":
+        return redirect("/login")
 
-    top_user = "None"
-    if db["downloads"]:
-        top_user = max(db["downloads"], key=db["downloads"].get)
-
-    return render_template("dashboard.html", stats=stats, top=top_user, ads=db["ads"])
-
-# ================= API STATS =================
-@app.route("/api/stats")
-def api_stats():
     db = load_db()
-    return jsonify({
-        "bots": len(db["bots"]),
-        "users": len(db["users"]),
-        "downloads": sum(db["downloads"].values()) if db["downloads"] else 0
+    return render_template("admin.html", messages=db["messages"])
+
+# ================= SEND MESSAGE =================
+@app.route("/send", methods=["POST"])
+def send():
+    db = load_db()
+
+    msg = request.form["message"]
+    name = session.get("name","Admin")
+
+    db["messages"].append({
+        "name": name,
+        "msg": msg
     })
 
-# ================= BROADCAST (API READY) =================
-@app.route("/broadcast", methods=["POST"])
-def broadcast():
-    if not session.get("admin"):
-        return "Unauthorized"
-
-    message = request.form["message"]
-    return f"Broadcast sent: {message}"
+    save_db(db)
+    return redirect("/user")
 
 # ================= RUN =================
 if __name__ == "__main__":
