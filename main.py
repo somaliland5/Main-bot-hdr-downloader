@@ -2,68 +2,42 @@ import telebot
 import json
 import os
 import requests
-import threading
-from flask import Flask, request, jsonify
 from telebot.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 
-# ================= ENV =================
 TOKEN = os.getenv("MAIN_BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 bot = telebot.TeleBot(TOKEN)
 
-# ================= FLASK APP (FOR FORCE JOIN API) =================
-app = Flask(__name__)
-
-# ================= DATABASE =================
+# ================= SAFE DB =================
 def load_db():
+    default = {
+        "bots": [],
+        "users": [],
+        "downloads": {},
+        "channels": []
+    }
+
     if not os.path.exists("database.json"):
-        return {
-            "bots": [],
-            "users": [],
-            "downloads": {},
-            "channels": []
-        }
-    with open("database.json", "r") as f:
-        return json.load(f)
+        return default
+
+    try:
+        with open("database.json", "r") as f:
+            data = json.load(f)
+            return {**default, **data}
+    except:
+        return default
 
 def save_db(data):
     with open("database.json", "w") as f:
         json.dump(data, f, indent=4)
 
-# ================= TRACK USER =================
+# ================= TRACK USERS =================
 def track_user(user_id):
     db = load_db()
     if user_id not in db["users"]:
         db["users"].append(user_id)
         save_db(db)
-
-# ================= FORCE JOIN CHECK API =================
-@app.route("/check_user", methods=["POST"])
-def check_user():
-    data = request.json
-    user_id = data.get("user_id")
-
-    db = load_db()
-    channels = db.get("channels", [])
-
-    missing = []
-
-    for ch in channels:
-        try:
-            member = bot.get_chat_member(ch, user_id)
-            if member.status in ["left", "kicked"]:
-                missing.append(ch)
-        except:
-            missing.append(ch)
-
-    if missing:
-        return jsonify({
-            "ok": False,
-            "channels": missing
-        })
-
-    return jsonify({"ok": True})
 
 # ================= START =================
 @bot.message_handler(commands=['start'])
@@ -75,13 +49,26 @@ def start(msg):
     kb.add("➕ Add Bot", "📦 My Bots")
 
     if msg.from_user.id == ADMIN_ID:
-        kb.add("📊 Admin Panel")
+        kb.add("📊 Admin Panel", "📢 Broadcast")
 
     bot.send_message(
         msg.chat.id,
         "🚀 Welcome to Pro Bot System",
         reply_markup=kb
     )
+
+    # ===== 4K UNLOCK UI (ADMIN VIEW USERS) =====
+    if msg.from_user.id == ADMIN_ID:
+        inline = InlineKeyboardMarkup()
+        inline.add(
+            InlineKeyboardButton("🔓 UNLOCK 4K QUALITY", callback_data="unlock4k")
+        )
+
+        bot.send_message(
+            msg.chat.id,
+            "Premium Control Panel",
+            reply_markup=inline
+        )
 
 # ================= ADD BOT =================
 @bot.message_handler(func=lambda m: m.text == "➕ Add Bot")
@@ -119,23 +106,23 @@ def save_bot(msg):
 
     save_db(db)
 
-    bot.send_message(msg.chat.id, f"🤖 @{info['username']} added successfully")
+    bot.send_message(msg.chat.id, f"🤖 @{info['username']} added")
 
 # ================= MY BOTS =================
 @bot.message_handler(func=lambda m: m.text == "📦 My Bots")
 def my_bots(msg):
     db = load_db()
-    found = False
 
     for b in db["bots"]:
         if b["owner"] == msg.from_user.id:
-            found = True
 
             markup = InlineKeyboardMarkup()
+
             markup.add(
                 InlineKeyboardButton("🟢 Open", callback_data=f"open|{b['token']}"),
                 InlineKeyboardButton("🔴 Stop", callback_data=f"stop|{b['token']}")
             )
+
             markup.add(
                 InlineKeyboardButton("❌ Delete Bot", callback_data=f"del|{b['token']}")
             )
@@ -145,9 +132,6 @@ def my_bots(msg):
                 f"🤖 @{b['username']}\nStatus: {b['status']}",
                 reply_markup=markup
             )
-
-    if not found:
-        bot.send_message(msg.chat.id, "No bots found")
 
 # ================= ADMIN PANEL =================
 @bot.message_handler(func=lambda m: m.text == "📊 Admin Panel")
@@ -160,57 +144,20 @@ def admin_panel(msg):
     kb = InlineKeyboardMarkup()
 
     kb.add(InlineKeyboardButton("🤖 TOTAL BOTS", callback_data="bots"))
-    kb.add(InlineKeyboardButton("👥 TOTAL USERS", callback_data="users"))
-    kb.add(InlineKeyboardButton("📥 TOTAL DOWNLOADS", callback_data="downloads"))
+    kb.add(InlineKeyboardButton("👥 USERS", callback_data="users"))
+    kb.add(InlineKeyboardButton("📥 DOWNLOADS", callback_data="downloads"))
     kb.add(InlineKeyboardButton("🏆 TOP USER", callback_data="top"))
-
-    kb.add(InlineKeyboardButton("📢 BROADCAST", callback_data="broadcast"))
+    kb.add(InlineKeyboardButton("📢 BROADCAST ALL", callback_data="bcall"))
 
     bot.send_message(msg.chat.id, "📊 Admin Panel", reply_markup=kb)
 
-# ================= CALLBACKS =================
-@bot.callback_query_handler(func=lambda call: True)
-def callback(call):
-    db = load_db()
-    data = call.data.split("|")
-    action = data[0]
-
-    # ===== STATS =====
-    if action == "bots":
-        bot.send_message(call.message.chat.id, f"🤖 Bots: {len(db['bots'])}")
-
-    elif action == "users":
-        bot.send_message(call.message.chat.id, f"👥 Users: {len(db['users'])}")
-
-    elif action == "downloads":
-        total = sum(db["downloads"].values())
-        bot.send_message(call.message.chat.id, f"📥 Downloads: {total}")
-
-    elif action == "top":
-        if not db["downloads"]:
-            bot.send_message(call.message.chat.id, "No downloads yet")
-            return
-
-        top = max(db["downloads"], key=db["downloads"].get)
-        bot.send_message(call.message.chat.id, f"🏆 Top User: {top}")
-
-    # ===== DELETE BOT (FULL REMOVE) =====
-    elif action == "del":
-        token = data[1]
-
-        db["bots"] = [b for b in db["bots"] if b["token"] != token]
-        save_db(db)
-
-        bot.answer_callback_query(call.id, "Bot deleted ❌")
-        bot.send_message(call.message.chat.id, "Bot removed completely")
-
-# ================= BROADCAST =================
-@bot.message_handler(commands=['broadcast'])
+# ================= BROADCAST SYSTEM =================
+@bot.message_handler(func=lambda m: m.text == "📢 Broadcast")
 def broadcast(msg):
     if msg.from_user.id != ADMIN_ID:
         return
 
-    bot.send_message(msg.chat.id, "Send message to broadcast")
+    bot.send_message(msg.chat.id, "Send message / photo / video / button")
     bot.register_next_step_handler(msg, do_broadcast)
 
 def do_broadcast(msg):
@@ -218,18 +165,58 @@ def do_broadcast(msg):
 
     for u in db["users"]:
         try:
-            bot.send_message(u, msg.text)
+            if msg.content_type == "text":
+                bot.send_message(u, msg.text)
+
+            elif msg.content_type == "photo":
+                bot.send_photo(u, msg.photo[-1].file_id, caption=msg.caption or "")
+
+            elif msg.content_type == "video":
+                bot.send_video(u, msg.video.file_id, caption=msg.caption or "")
+
         except:
             pass
 
     bot.send_message(msg.chat.id, "Broadcast sent ✅")
 
-# ================= RUN FLASK =================
-def run_flask():
-    app.run(host="0.0.0.0", port=8080)
+# ================= CALLBACKS =================
+@bot.callback_query_handler(func=lambda call: True)
+def cb(call):
+    db = load_db()
+    data = call.data.split("|")
+    action = data[0]
 
-threading.Thread(target=run_flask).start()
+    if action == "bots":
+        bot.send_message(call.message.chat.id, f"Bots: {len(db['bots'])}")
 
-# ================= RUN BOT =================
+    elif action == "users":
+        bot.send_message(call.message.chat.id, f"Users: {len(db['users'])}")
+
+    elif action == "downloads":
+        total = sum(db["downloads"].values())
+        bot.send_message(call.message.chat.id, f"Downloads: {total}")
+
+    elif action == "top":
+        if db["downloads"]:
+            top = max(db["downloads"], key=db["downloads"].get)
+            bot.send_message(call.message.chat.id, f"Top User: {top}")
+
+    elif action == "unlock4k":
+        bot.send_message(
+            call.message.chat.id,
+            "🔓 4K UNLOCKED SYSTEM\nContact: @scholes1"
+        )
+
+    elif action == "bcall":
+        bot.send_message(call.message.chat.id, "Send broadcast message")
+        bot.register_next_step_handler(call.message, do_broadcast)
+
+    elif action == "del":
+        token = data[1]
+        db["bots"] = [b for b in db["bots"] if b["token"] != token]
+        save_db(db)
+        bot.send_message(call.message.chat.id, "Bot deleted ❌")
+
+# ================= RUN =================
 print("MAIN BOT RUNNING...")
 bot.infinity_polling()
