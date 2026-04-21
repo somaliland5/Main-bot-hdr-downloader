@@ -1,88 +1,56 @@
-from flask import Flask, render_template, request, redirect, session
-import json, os
+from flask import Flask, render_template, request, session, redirect
+from flask_socketio import SocketIO, send
+from email_service import send_code, OTP_STORE
 
 app = Flask(__name__)
-app.secret_key = "change_this_secret_key"
+app.secret_key = "secret"
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-ADMIN_PASSWORD = "admin123"
-USER_PASSWORD = "user123"
-
-# ================= DB =================
-def load_db():
-    if not os.path.exists("database.json"):
-        return {"messages": []}
-
-    with open("database.json", "r") as f:
-        return json.load(f)
-
-def save_db(db):
-    with open("database.json", "w") as f:
-        json.dump(db, f, indent=4)
-
-# ================= ROOT FIX (IMPORTANT) =================
+# ================= HOME =================
 @app.route("/")
 def home():
     return redirect("/login")
 
-# ================= LOGIN =================
+# ================= LOGIN (EMAIL STEP 1) =================
 @app.route("/login", methods=["GET","POST"])
 def login():
     if request.method == "POST":
-        password = request.form["password"]
-        name = request.form.get("name","User")
-
-        # ADMIN
-        if password == ADMIN_PASSWORD:
-            session["role"] = "admin"
-            return redirect("/admin")
-
-        # USER
-        if password == USER_PASSWORD:
-            session["role"] = "user"
-            session["name"] = name
-            return redirect("/user")
-
-        return "Wrong password ❌"
+        email = request.form["email"]
+        send_code(email)
+        session["email"] = email
+        return redirect("/verify")
 
     return render_template("login.html")
 
-# ================= USER PAGE =================
-@app.route("/user")
-def user():
-    if session.get("role") != "user":
+# ================= VERIFY OTP =================
+@app.route("/verify", methods=["GET","POST"])
+def verify():
+    if request.method == "POST":
+        code = request.form["code"]
+        email = session.get("email")
+
+        if OTP_STORE.get(email) == code:
+            session["user"] = email
+            return redirect("/chat")
+
+        return "Wrong code ❌"
+
+    return render_template("verify.html")
+
+# ================= CHAT PAGE =================
+@app.route("/chat")
+def chat():
+    if not session.get("user"):
         return redirect("/login")
 
-    db = load_db()
-    return render_template("user.html", name=session.get("name"), messages=db["messages"])
+    return render_template("chat.html", user=session["user"])
 
-# ================= ADMIN PAGE =================
-@app.route("/admin")
-def admin():
-    if session.get("role") != "admin":
-        return redirect("/login")
-
-    db = load_db()
-    return render_template("admin.html", messages=db["messages"])
-
-# ================= SEND MESSAGE =================
-@app.route("/send", methods=["POST"])
-def send():
-    if not session.get("role"):
-        return redirect("/login")
-
-    db = load_db()
-
-    msg = request.form["message"]
-    name = session.get("name","User")
-
-    db["messages"].append({
-        "name": name,
-        "msg": msg
-    })
-
-    save_db(db)
-    return redirect("/user")
+# ================= REAL-TIME CHAT =================
+@socketio.on("message")
+def handle(msg):
+    user = session.get("user","User")
+    send({"user": user, "msg": msg}, broadcast=True)
 
 # ================= RUN =================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    socketio.run(app, host="0.0.0.0", port=8080)
