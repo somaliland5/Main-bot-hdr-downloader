@@ -28,37 +28,40 @@ def start_bot(bot_data):
     token = bot_data.get("token")
     owner = bot_data.get("owner")
 
-    print("TRY START BOT:", token)
-
     if not token:
-        print("NO TOKEN")
         return
 
     if token in running_bots:
-        print("ALREADY RUNNING")
         return
+
+    stop_flag = {"run": True}
 
     def run():
         try:
-            print("CALLING SUB BOT...")
-            start_sub_bot(token, owner)
+            start_sub_bot(token, owner, stop_flag)
         except Exception as e:
-            print(f"[BOT CRASHED] {e}")
+            print(f"[BOT ERROR] {token[:8]} -> {e}")
 
     t = threading.Thread(target=run)
     t.daemon = True
     t.start()
 
-    running_bots[token] = True
+    running_bots[token] = {
+        "thread": t,
+        "stop": stop_flag
+    }
+
+    print(f"[STARTED] Bot {token[:8]}")
 
 # ================= STOP BOT =================
-def stop_removed_bots(db_tokens):
-    current_tokens = set(running_bots.keys())
+def stop_bot(token):
+    bot = running_bots.get(token)
 
-    for token in current_tokens:
-        if token not in db_tokens:
-            print(f"[REMOVED BOT] {token[:8]}")
-            running_bots.pop(token, None)
+    if bot:
+        bot["stop"]["run"] = False
+        running_bots.pop(token, None)
+
+        print(f"[STOPPED] Bot {token[:8]}")
 
 # ================= WATCH SYSTEM =================
 def watch_bots():
@@ -80,39 +83,38 @@ def watch_bots():
 
                 db_tokens.add(token)
 
-                # start only active bots
+                # start active bots
                 if status == "active" and token not in running_bots:
                     start_bot(bot)
 
+                # stop inactive bots
+                if status != "active":
+                    stop_bot(token)
+
             # remove deleted bots
-            stop_removed_bots(db_tokens)
+            for token in list(running_bots.keys()):
+                if token not in db_tokens:
+                    stop_bot(token)
 
         except Exception as e:
             print("WATCH ERROR:", e)
 
-        time.sleep(5)  # check every 5 seconds
+        time.sleep(5)
 
 # ================= WEB =================
 def run_web():
-    try:
-        print("[WEB STARTING]")
-        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
-    except Exception as e:
-        print("WEB ERROR:", e)
+    print("[WEB STARTING]")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 # ================= MAIN =================
 if __name__ == "__main__":
 
     print("[SYSTEM BOOTING]")
 
-    # start web
     threading.Thread(target=run_web, daemon=True).start()
-
-    # start watcher
     threading.Thread(target=watch_bots, daemon=True).start()
 
     print("[SYSTEM RUNNING]")
 
-    # keep alive
     while True:
         time.sleep(60)
