@@ -1,56 +1,88 @@
-from flask import Flask, render_template, request, session, redirect
-from flask_socketio import SocketIO, send
-from email_service import send_code, OTP_STORE
+from flask import Flask, render_template, request, redirect, session
+import json, os
+from auth import send_otp, verify_otp
 
 app = Flask(__name__)
-app.secret_key = "secret"
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.secret_key = "super_secret_key"
+
+# ================= DB =================
+def load_db():
+    if not os.path.exists("database.json"):
+        return {"users": [], "bots": []}
+
+    with open("database.json", "r") as f:
+        return json.load(f)
+
+def save_db(db):
+    with open("database.json", "w") as f:
+        json.dump(db, f, indent=4)
 
 # ================= HOME =================
 @app.route("/")
 def home():
     return redirect("/login")
 
-# ================= LOGIN (EMAIL STEP 1) =================
+# ================= LOGIN =================
 @app.route("/login", methods=["GET","POST"])
 def login():
     if request.method == "POST":
         email = request.form["email"]
-        send_code(email)
+
+        send_otp(email)
         session["email"] = email
+
         return redirect("/verify")
 
     return render_template("login.html")
 
-# ================= VERIFY OTP =================
+# ================= VERIFY =================
 @app.route("/verify", methods=["GET","POST"])
 def verify():
     if request.method == "POST":
         code = request.form["code"]
         email = session.get("email")
 
-        if OTP_STORE.get(email) == code:
+        if verify_otp(email, code):
             session["user"] = email
-            return redirect("/chat")
+            return redirect("/dashboard")
 
-        return "Wrong code ❌"
+        return "Wrong OTP ❌"
 
     return render_template("verify.html")
 
-# ================= CHAT PAGE =================
-@app.route("/chat")
-def chat():
+# ================= DASHBOARD =================
+@app.route("/dashboard")
+def dashboard():
     if not session.get("user"):
         return redirect("/login")
 
-    return render_template("chat.html", user=session["user"])
+    db = load_db()
 
-# ================= REAL-TIME CHAT =================
-@socketio.on("message")
-def handle(msg):
-    user = session.get("user","User")
-    send({"user": user, "msg": msg}, broadcast=True)
+    return render_template("dashboard.html",
+        bots=len(db["bots"]),
+        users=len(db["users"])
+    )
+
+# ================= ADD BOT =================
+@app.route("/add_bot", methods=["POST"])
+def add_bot():
+    if not session.get("user"):
+        return redirect("/login")
+
+    token = request.form["token"]
+
+    db = load_db()
+
+    db["bots"].append({
+        "token": token,
+        "owner": session["user"],
+        "status": "active"
+    })
+
+    save_db(db)
+
+    return redirect("/dashboard")
 
 # ================= RUN =================
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=8080)
