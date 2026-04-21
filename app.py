@@ -2,9 +2,9 @@ from flask import Flask, render_template, request, redirect, session
 import json, os
 
 app = Flask(__name__)
-app.secret_key = "change_this_key"
+app.secret_key = "change_this_secret_key"
 
-ADMIN_PASSWORD = "admin7983"
+ADMIN_PASSWORD = "admin123"
 USER_PASSWORD = "user123"
 
 # ================= DB =================
@@ -19,6 +19,11 @@ def save_db(db):
     with open("database.json", "w") as f:
         json.dump(db, f, indent=4)
 
+# ================= ROOT FIX (IMPORTANT) =================
+@app.route("/")
+def home():
+    return redirect("/login")
+
 # ================= LOGIN =================
 @app.route("/login", methods=["GET","POST"])
 def login():
@@ -26,12 +31,12 @@ def login():
         password = request.form["password"]
         name = request.form.get("name","User")
 
-        # ADMIN LOGIN
+        # ADMIN
         if password == ADMIN_PASSWORD:
             session["role"] = "admin"
             return redirect("/admin")
 
-        # USER LOGIN
+        # USER
         if password == USER_PASSWORD:
             session["role"] = "user"
             session["name"] = name
@@ -62,10 +67,13 @@ def admin():
 # ================= SEND MESSAGE =================
 @app.route("/send", methods=["POST"])
 def send():
+    if not session.get("role"):
+        return redirect("/login")
+
     db = load_db()
 
     msg = request.form["message"]
-    name = session.get("name","Admin")
+    name = session.get("name","User")
 
     db["messages"].append({
         "name": name,
@@ -77,4 +85,4 @@ def send():
 
 # ================= RUN =================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
