@@ -182,5 +182,3 @@ def start_sub_bot(TOKEN, OWNER_ID):
             bot.send_message(msg.chat.id, "Download failed ❌")
 
     print(f"[SUB BOT RUNNING] {TOKEN[:8]}")
-
-    bot.infinity_polling(skip_pending=True)
