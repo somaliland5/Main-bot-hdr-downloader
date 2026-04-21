@@ -1,146 +1,69 @@
 from flask import Flask, render_template, request, redirect, session
 import json
 import os
-import traceback
-
-from auth import send_otp, verify_otp
 
 app = Flask(__name__)
-app.secret_key = "CHANGE_THIS_SECRET_KEY"
+app.secret_key = "secret123"
 
 # ================= DB =================
 def load_db():
-    try:
-        if not os.path.exists("database.json"):
-            return {"users": [], "bots": []}
-
-        with open("database.json", "r") as f:
-            return json.load(f)
-
-    except Exception as e:
-        print("DB LOAD ERROR:", e)
+    if not os.path.exists("database.json"):
         return {"users": [], "bots": []}
-
+    return json.load(open("database.json"))
 
 def save_db(db):
-    try:
-        with open("database.json", "w") as f:
-            json.dump(db, f, indent=4)
-    except Exception as e:
-        print("DB SAVE ERROR:", e)
-
-# ================= ERROR HANDLER =================
-@app.errorhandler(500)
-def server_error(e):
-    print("🔥 INTERNAL ERROR:")
-    print(traceback.format_exc())
-    return "Internal Server Error (check logs)", 500
+    with open("database.json", "w") as f:
+        json.dump(db, f, indent=4)
 
 # ================= HOME =================
 @app.route("/")
 def home():
-    return redirect("/login")
-
-# ================= LOGIN =================
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    try:
-        if request.method == "POST":
-            email = request.form.get("email")
-
-            if not email:
-                return "Email required"
-
-            # send OTP
-            send_otp(app, email, email)  # safe call pattern
-
-            session["email"] = email
-
-            return redirect("/verify")
-
-        return render_template("login.html")
-
-    except Exception as e:
-        print("LOGIN ERROR:", e)
-        return "Internal Server Error", 500
-
-# ================= VERIFY =================
-@app.route("/verify", methods=["GET", "POST"])
-def verify():
-    try:
-        if request.method == "POST":
-            code = request.form.get("code")
-            email = session.get("email")
-
-            if not email:
-                return redirect("/login")
-
-            if verify_otp(email, code):
-                session["user"] = email
-                return redirect("/dashboard")
-
-            return "Wrong or expired code"
-
-        return render_template("verify.html")
-
-    except Exception as e:
-        print("VERIFY ERROR:", e)
-        return "Internal Server Error", 500
-
-# ================= DASHBOARD =================
-@app.route("/dashboard")
-def dashboard():
-    try:
-        if not session.get("user"):
-            return redirect("/login")
-
-        db = load_db()
-
-        return render_template(
-            "dashboard.html",
-            users=len(db.get("users", [])),
-            bots=len(db.get("bots", []))
-        )
-
-    except Exception as e:
-        print("DASHBOARD ERROR:", e)
-        return "Internal Server Error", 500
+    user_id = session.get("user", "Unknown")
+    return render_template("index.html", user_id=user_id)
 
 # ================= ADD BOT =================
-@app.route("/add_bot", methods=["POST"])
+@app.route("/add_bot", methods=["GET", "POST"])
 def add_bot():
-    try:
-        if not session.get("user"):
-            return redirect("/login")
+    db = load_db()
 
+    if request.method == "POST":
         token = request.form.get("token")
-
-        if not token:
-            return "Token required"
-
-        db = load_db()
 
         db["bots"].append({
             "token": token,
-            "owner": session["user"],
             "status": "active"
         })
 
         save_db(db)
+        return redirect("/my_bots")
 
-        return redirect("/dashboard")
+    return render_template("add_bot.html")
 
-    except Exception as e:
-        print("ADD BOT ERROR:", e)
-        return "Internal Server Error", 500
+# ================= MY BOTS =================
+@app.route("/my_bots")
+def my_bots():
+    db = load_db()
+    return render_template("my_bots.html", bots=db["bots"])
 
-# ================= LOGOUT =================
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/login")
+# ================= DELETE BOT =================
+@app.route("/delete_bot/<token>")
+def delete_bot(token):
+    db = load_db()
+
+    db["bots"] = [b for b in db["bots"] if b["token"] != token]
+
+    save_db(db)
+    return redirect("/my_bots")
+
+# ================= ADMIN =================
+@app.route("/admin")
+def admin():
+    db = load_db()
+    return render_template("admin.html",
+        users=len(db["users"]),
+        bots=len(db["bots"])
+    )
 
 # ================= RUN =================
 if __name__ == "__main__":
-    print("🚀 APP STARTING...")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=True)
+    app.run(host="0.0.0.0", port=8080)
