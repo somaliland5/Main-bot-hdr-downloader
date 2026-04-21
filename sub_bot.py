@@ -10,13 +10,19 @@ user_state = {}
 
 # ================= LOAD DB =================
 def load_db():
+    default = {"channels": []}
+
     if not os.path.exists("database.json"):
-        return {"channels": []}
+        return default
 
-    with open("database.json", "r") as f:
-        return json.load(f)
+    try:
+        with open("database.json", "r") as f:
+            data = json.load(f)
+            return {**default, **data}
+    except:
+        return default
 
-# ================= USERS FILE =================
+# ================= USERS =================
 def load_users(file):
     if not os.path.exists(file):
         return []
@@ -28,11 +34,12 @@ def save_users(file, data):
         json.dump(data, f)
 
 # ================= DOWNLOAD =================
-def download_media(url):
+def download_media(url, quality="best"):
     ydl_opts = {
         "outtmpl": "media.%(ext)s",
         "quiet": True,
-        "noplaylist": True
+        "noplaylist": True,
+        "format": quality
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -40,11 +47,11 @@ def download_media(url):
         filename = ydl.prepare_filename(info)
         return filename
 
-# ================= FORCE JOIN CHECK (MAIN BOT API) =================
-def check_user_access(user_id):
+# ================= FORCE JOIN API =================
+def check_access(user_id):
     try:
         r = requests.post(
-            "http://localhost:8080/check_user",  # replace with Railway URL
+            "http://localhost:8080/check_user",  # Railway URL replace here
             json={"user_id": user_id},
             timeout=10
         ).json()
@@ -52,7 +59,6 @@ def check_user_access(user_id):
         return r.get("ok", False), r.get("channels", [])
 
     except:
-        # if API fails, allow temporarily (fallback)
         return True, []
 
 # ================= START BOT =================
@@ -67,7 +73,7 @@ def start_sub_bot(TOKEN, OWNER_ID):
     @bot.message_handler(commands=['start'])
     def start(msg):
 
-        ok, missing = check_user_access(msg.from_user.id)
+        ok, missing = check_access(msg.from_user.id)
 
         if not ok:
             markup = InlineKeyboardMarkup()
@@ -86,7 +92,7 @@ def start_sub_bot(TOKEN, OWNER_ID):
 
             bot.send_message(
                 msg.chat.id,
-                "⚠️ You must join required channels first",
+                "⚠️ Join required channels first",
                 reply_markup=markup
             )
             return
@@ -96,20 +102,36 @@ def start_sub_bot(TOKEN, OWNER_ID):
             users.append(msg.chat.id)
             save_users(users_file, users)
 
+        kb = InlineKeyboardMarkup()
+        kb.add(
+            InlineKeyboardButton("⚡ 1080P DOWNLOAD", callback_data="1080"),
+            InlineKeyboardButton("🔥 4K DOWNLOAD", callback_data="4k")
+        )
+
         bot.send_message(
             msg.chat.id,
-            "📥 Send TikTok or Instagram link to download"
+            "📥 Send TikTok / Instagram link",
+            reply_markup=kb
         )
 
     # ================= CHECK JOIN =================
     @bot.callback_query_handler(func=lambda call: call.data == "check")
     def check(call):
-        ok, missing = check_user_access(call.from_user.id)
+        ok, missing = check_access(call.from_user.id)
 
         if ok:
             bot.send_message(call.message.chat.id, "Access granted ✅")
         else:
             bot.answer_callback_query(call.id, "Join required ❌")
+
+    # ================= QUALITY SELECT =================
+    quality_map = {}
+
+    @bot.callback_query_handler(func=lambda call: call.data in ["1080", "4k"])
+    def quality(call):
+        quality_map[call.from_user.id] = "best" if call.data == "1080" else "bestvideo+bestaudio"
+
+        bot.answer_callback_query(call.id, f"{call.data.upper()} selected")
 
     # ================= HANDLE DOWNLOAD =================
     @bot.message_handler(func=lambda m: True, content_types=['text'])
@@ -117,16 +139,16 @@ def start_sub_bot(TOKEN, OWNER_ID):
 
         url = msg.text.strip()
 
-        # ===== MESSAGE 1 =====
         loading = bot.send_message(msg.chat.id, "Downloading... ⏳")
 
         try:
-            file_path = download_media(url)
+            quality = quality_map.get(msg.from_user.id, "best")
 
-            # delete loading message
+            file_path = download_media(url, quality)
+
             bot.delete_message(msg.chat.id, loading.message_id)
 
-            # ===== MESSAGE 2 (MEDIA + CAPTION) =====
+            # MESSAGE 2 (MEDIA)
             caption = f"Via: @{bot_username}"
 
             with open(file_path, "rb") as f:
@@ -140,7 +162,7 @@ def start_sub_bot(TOKEN, OWNER_ID):
                 else:
                     bot.send_document(msg.chat.id, f, caption=caption)
 
-            # ===== MESSAGE 3 (CREATED) =====
+            # MESSAGE 3 (CREATED)
             bot.send_message(msg.chat.id, "Created: @Create_Our_own_bot")
 
             os.remove(file_path)
