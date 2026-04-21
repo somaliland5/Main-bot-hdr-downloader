@@ -12,10 +12,14 @@
 
 <div style="background:#1c1f2a;padding:10px;margin:10px;border-radius:8px">
 
-<p>🤖 {{bot.username}}</p>
+<p>🤖 Bot: {{bot.username or bot.token[:10]}}</p>
 <p>Status: {{bot.status}}</p>
 
-<a href="/delete_bot/{{bot.token}}" style="color:red">❌ Delete</a>
+<!-- DELETE BOT -->
+<a href="/delete_bot/{{bot.token}}"
+   style="color:red">
+   ❌ Delete Bot
+</a>
 
 </div>
 
