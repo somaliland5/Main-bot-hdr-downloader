@@ -10,7 +10,7 @@ EMAIL = "yous01888@gmail.com"
 
 # ⚠️ IMPORTANT:
 # Use Gmail App Password (not normal password)
-APP_PASSWORD = "mdqd zgwj vskn blii"
+APP_PASSWORD = "mdqdzgwjvsknblii"
 
 # ================= SEND OTP =================
 def send_otp(to_email):
