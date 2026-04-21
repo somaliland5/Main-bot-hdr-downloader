@@ -55,6 +55,29 @@ def delete_bot(token):
     save_db(db)
     return redirect("/my_bots")
 
+# ================= REAL BROADCAST =================
+@app.route("/broadcast", methods=["POST"])
+def broadcast():
+    db = load_db()
+
+    message = request.form.get("message")
+
+    users = db.get("users", [])
+
+    sent = 0
+    failed = 0
+
+    for user_id in users:
+        try:
+            bot.send_message(user_id, f"📢 Broadcast:\n\n{message}")
+            sent += 1
+        except:
+            failed += 1
+
+    print(f"[BROADCAST] sent={sent} failed={failed}")
+
+    return redirect("/admin")
+
 # ================= ADMIN =================
 @app.route("/admin")
 def admin():
