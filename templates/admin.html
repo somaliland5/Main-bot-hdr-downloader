@@ -4,12 +4,41 @@
 <title>Admin Panel</title>
 </head>
 
-<body style="background:#0b1220;color:white;padding:20px">
+<body style="background:#0b1220;color:white;padding:20px;font-family:sans-serif">
 
-<h2>📊 Admin Panel</h2>
+<h2>📊 Admin Dashboard</h2>
 
-<p>👥 Users: {{users}}</p>
-<p>🤖 Bots: {{bots}}</p>
+<!-- STATS -->
+<div style="background:#1c1f2a;padding:10px;border-radius:8px">
+    <p>👥 Total Users: {{users}}</p>
+    <p>🤖 Total Bots: {{bots}}</p>
+</div>
+
+<br>
+
+<!-- BROADCAST -->
+<h3>📢 Broadcast Message</h3>
+
+<form method="POST" action="/broadcast">
+
+    <textarea name="message"
+        placeholder="Write message..."
+        style="width:100%;height:100px;padding:10px"></textarea>
+
+    <br><br>
+
+    <button style="padding:10px 20px;background:#00c853;color:white;border:none">
+        Send Broadcast
+    </button>
+
+</form>
+
+<br>
+
+<!-- BOT CONTROL -->
+<h3>⚙️ Bot Control</h3>
+
+<p>Go to My Bots to manage bots</p>
 
 </body>
 </html>
