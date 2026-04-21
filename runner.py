@@ -28,27 +28,28 @@ def start_bot(bot_data):
     token = bot_data.get("token")
     owner = bot_data.get("owner")
 
+    print("TRY START BOT:", token)
+
     if not token:
-        print("INVALID BOT DATA")
+        print("NO TOKEN")
         return
 
-    # prevent duplicate
     if token in running_bots:
+        print("ALREADY RUNNING")
         return
 
     def run():
         try:
-            print(f"[STARTING BOT] {token[:8]}")
+            print("CALLING SUB BOT...")
             start_sub_bot(token, owner)
         except Exception as e:
-            print(f"[BOT ERROR] {token[:8]} -> {e}")
+            print(f"[BOT CRASHED] {e}")
 
     t = threading.Thread(target=run)
     t.daemon = True
     t.start()
 
     running_bots[token] = True
-    print(f"[BOT STARTED] {token[:8]}")
 
 # ================= STOP BOT =================
 def stop_removed_bots(db_tokens):
