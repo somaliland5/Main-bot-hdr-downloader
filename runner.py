@@ -5,6 +5,7 @@ import time
 from sub_bot import start_sub_bot
 from app import app
 
+# ================= RUNNING BOTS =================
 running_bots = {}
 
 # ================= LOAD DB =================
@@ -18,7 +19,8 @@ def load_db():
         with open("database.json", "r") as f:
             data = json.load(f)
             return {**default, **data}
-    except:
+    except Exception as e:
+        print("DB LOAD ERROR:", e)
         return default
 
 # ================= START BOT =================
@@ -27,13 +29,16 @@ def start_bot(bot_data):
     owner = bot_data.get("owner")
 
     if not token:
+        print("INVALID BOT DATA")
         return
 
+    # prevent duplicate
     if token in running_bots:
         return
 
     def run():
         try:
+            print(f"[STARTING BOT] {token[:8]}")
             start_sub_bot(token, owner)
         except Exception as e:
             print(f"[BOT ERROR] {token[:8]} -> {e}")
@@ -43,36 +48,70 @@ def start_bot(bot_data):
     t.start()
 
     running_bots[token] = True
-    print(f"[STARTED] Bot {token[:8]}")
+    print(f"[BOT STARTED] {token[:8]}")
 
-# ================= WATCH NEW BOTS =================
+# ================= STOP BOT =================
+def stop_removed_bots(db_tokens):
+    current_tokens = set(running_bots.keys())
+
+    for token in current_tokens:
+        if token not in db_tokens:
+            print(f"[REMOVED BOT] {token[:8]}")
+            running_bots.pop(token, None)
+
+# ================= WATCH SYSTEM =================
 def watch_bots():
-    old_bots = set()
+    print("[WATCHER STARTED]")
 
     while True:
-        db = load_db()
-        bots = db.get("bots", [])
+        try:
+            db = load_db()
+            bots = db.get("bots", [])
 
-        for bot in bots:
-            token = bot.get("token")
+            db_tokens = set()
 
-            if token not in old_bots and bot.get("status") == "active":
-                start_bot(bot)
-                old_bots.add(token)
+            for bot in bots:
+                token = bot.get("token")
+                status = bot.get("status")
+
+                if not token:
+                    continue
+
+                db_tokens.add(token)
+
+                # start only active bots
+                if status == "active" and token not in running_bots:
+                    start_bot(bot)
+
+            # remove deleted bots
+            stop_removed_bots(db_tokens)
+
+        except Exception as e:
+            print("WATCH ERROR:", e)
 
         time.sleep(5)  # check every 5 seconds
 
-# ================= WEB RUN =================
+# ================= WEB =================
 def run_web():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    try:
+        print("[WEB STARTING]")
+        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    except Exception as e:
+        print("WEB ERROR:", e)
 
 # ================= MAIN =================
 if __name__ == "__main__":
 
-    # web thread
+    print("[SYSTEM BOOTING]")
+
+    # start web
     threading.Thread(target=run_web, daemon=True).start()
 
-    # bot watcher thread
+    # start watcher
     threading.Thread(target=watch_bots, daemon=True).start()
 
-    print("[SYSTEM STARTED]")
+    print("[SYSTEM RUNNING]")
+
+    # keep alive
+    while True:
+        time.sleep(60)
