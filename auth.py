@@ -5,8 +5,8 @@ from email.mime.text import MIMEText
 
 OTP_STORE = {}
 
-EMAIL = "googojoseh1@gmail.com"
-APP_PASSWORD = "YOUR_APP_PASSWORD_HERE"
+EMAIL = "yous01888@gmail.com"
+APP_PASSWORD = "mdqdzgwjvsknblii"
 
 # ================= SEND OTP =================
 def send_otp(to_email):
