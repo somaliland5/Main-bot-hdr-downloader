@@ -1,8 +1,9 @@
 import threading
 import json
 import os
+import time
 from sub_bot import start_sub_bot
-from app import app   # 👈 web dashboard import
+from app import app
 
 running_bots = {}
 
@@ -20,17 +21,15 @@ def load_db():
     except:
         return default
 
-# ================= START WEB =================
-def run_web():
-    print("[WEB STARTING]")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
-
 # ================= START BOT =================
 def start_bot(bot_data):
     token = bot_data.get("token")
     owner = bot_data.get("owner")
 
-    if not token or token in running_bots:
+    if not token:
+        return
+
+    if token in running_bots:
         return
 
     def run():
@@ -43,29 +42,37 @@ def start_bot(bot_data):
     t.daemon = True
     t.start()
 
-    running_bots[token] = t
-    print(f"[BOT STARTED] {token[:8]}")
+    running_bots[token] = True
+    print(f"[STARTED] Bot {token[:8]}")
 
-# ================= RUN ALL BOTS =================
-def run_all_bots():
-    db = load_db()
+# ================= WATCH NEW BOTS =================
+def watch_bots():
+    old_bots = set()
 
-    for bot in db.get("bots", []):
-        if bot.get("status") == "active":
-            start_bot(bot)
+    while True:
+        db = load_db()
+        bots = db.get("bots", [])
 
-    print("[SYSTEM] ALL BOTS STARTED")
+        for bot in bots:
+            token = bot.get("token")
 
-# ================= MAIN START =================
+            if token not in old_bots and bot.get("status") == "active":
+                start_bot(bot)
+                old_bots.add(token)
+
+        time.sleep(5)  # check every 5 seconds
+
+# ================= WEB RUN =================
+def run_web():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
+# ================= MAIN =================
 if __name__ == "__main__":
 
-    # 1️⃣ start web in thread
-    web_thread = threading.Thread(target=run_web)
-    web_thread.daemon = True
-    web_thread.start()
+    # web thread
+    threading.Thread(target=run_web, daemon=True).start()
 
-    # 2️⃣ start bots
-    run_all_bots()
+    # bot watcher thread
+    threading.Thread(target=watch_bots, daemon=True).start()
 
-    # 3️⃣ keep alive
-    web_thread.join()
+    print("[SYSTEM STARTED]")
