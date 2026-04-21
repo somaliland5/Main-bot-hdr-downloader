@@ -6,7 +6,7 @@ from email.mime.text import MIMEText
 OTP_STORE = {}
 
 # ================= EMAIL CONFIG =================
-EMAIL = "googojoseh1@gmail.com"
+EMAIL = "yous01888@gmail.com"
 
 # ⚠️ IMPORTANT:
 # Use Gmail App Password (not normal password)
