@@ -2,38 +2,43 @@
 <html>
 <head>
     <title>Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 
-<body style="background:#0b1220;color:white;font-family:Arial;">
+<body>
 
-<h1>📊 Admin Dashboard</h1>
-
-<div style="display:flex;gap:20px;margin-top:20px;">
-
-<div style="background:#1c2333;padding:20px;border-radius:10px;">
-<h3>🤖 Bots</h3>
-<p>{{bots}}</p>
+<div class="topbar">
+    <h2>📊 Admin Dashboard</h2>
+    <a href="/logout">Logout</a>
 </div>
 
-<div style="background:#1c2333;padding:20px;border-radius:10px;">
-<h3>👥 Users</h3>
-<p>{{users}}</p>
+<!-- ADS -->
+<div class="ads">
+    📢 {{ads}}
 </div>
 
-<div style="background:#1c2333;padding:20px;border-radius:10px;">
-<h3>📥 Downloads</h3>
-<p>{{downloads}}</p>
-</div>
+<div class="grid">
 
-<div style="background:#1c2333;padding:20px;border-radius:10px;">
-<h3>🏆 Top User</h3>
-<p>{{top}}</p>
-</div>
+<div class="card">🤖 Bots <br><b>{{stats.bots}}</b></div>
+<div class="card">👥 Users <br><b>{{stats.users}}</b></div>
+<div class="card">📥 Downloads <br><b>{{stats.downloads}}</b></div>
+<div class="card">📡 Channels <br><b>{{stats.channels}}</b></div>
 
 </div>
 
-<br><br>
-<a href="/logout" style="color:red;">Logout</a>
+<div class="card full">
+    🏆 Top User: {{top}}
+</div>
+
+<!-- BROADCAST -->
+<div class="card full">
+    <h3>📢 Broadcast</h3>
+
+    <form method="POST" action="/broadcast">
+        <input type="text" name="message" placeholder="Write message">
+        <button type="submit">Send</button>
+    </form>
+</div>
 
 </body>
 </html>
