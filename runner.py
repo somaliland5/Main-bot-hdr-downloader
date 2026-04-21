@@ -3,23 +3,28 @@ import json
 import os
 from sub_bot import start_sub_bot
 
-# ================= ACTIVE BOTS =================
+# ================= RUNNING BOTS =================
 running_bots = {}
 
-# ================= LOAD DB =================
+# ================= LOAD DATABASE =================
 def load_db():
-    if not os.path.exists("database.json"):
-        return {"bots": [], "channels": []}
+    default = {"bots": [], "channels": []}
 
-    with open("database.json", "r") as f:
-        return json.load(f)
+    if not os.path.exists("database.json"):
+        return default
+
+    try:
+        with open("database.json", "r") as f:
+            data = json.load(f)
+            return {**default, **data}
+    except:
+        return default
 
 # ================= START SINGLE BOT =================
 def start_bot(bot_data):
     token = bot_data["token"]
     owner = bot_data["owner"]
 
-    # prevent duplicate running
     if token in running_bots:
         return
 
@@ -27,7 +32,7 @@ def start_bot(bot_data):
         try:
             start_sub_bot(token, owner)
         except Exception as e:
-            print(f"[BOT ERROR] {token[:8]} -> {e}")
+            print(f"[ERROR BOT] {token[:8]} -> {e}")
 
     t = threading.Thread(target=run)
     t.daemon = True
@@ -42,7 +47,7 @@ def stop_bot(token):
         del running_bots[token]
         print(f"[STOPPED] Bot {token[:8]}")
 
-# ================= START ALL ACTIVE BOTS =================
+# ================= START ALL BOTS =================
 def run_all_bots():
     db = load_db()
 
@@ -50,7 +55,7 @@ def run_all_bots():
         if bot.get("status") == "active":
             start_bot(bot)
 
-    print("[SYSTEM] All bots started")
+    print("[SYSTEM] All bots running")
 
 # ================= AUTO RUN =================
 run_all_bots()
